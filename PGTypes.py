@@ -5,7 +5,7 @@ fc2ImageImpl = c_void_p
 fc2PGRGuid = c_uint*4
 
 
-FULL_32BIT_VALUE = 0x7FFFFFFF
+
 
 fc2ErrorCodeStrings = [
     'Function returned with no errors.',
@@ -50,11 +50,8 @@ fc2ErrorCodeStrings = [
     'Image library failure.',
     'Buffer is too small.',
     'There is an image consistency error.',
-    'Filler',
     'Undefined'
 ]
-
-
 
 fc2PixelFormat = {
 	'MONO8'	: 0x80000000, # < 8 bits of mono information. 
@@ -87,7 +84,6 @@ fc2BayerTileFormat = {
     'GRBG' : 2, # Green-Red-Blue-Green. 
     'GBRG' : 3, # Green-Blue-Red-Green. 
     'BGGR' : 4, # Blue-Green-Green-Red. 
-    'FORCE_32BITS' : FULL_32BIT_VALUE
 }
 
 fc2ImageFileFormat = {
@@ -100,8 +96,54 @@ fc2ImageFileFormat = {
     'TIFF' : 5, # Tagged image file format. 
     'PNG' : 6, # Portable network graphics. 
     'RAW' : 7, # Raw data. 
-    'FORCE_32BITS' : FULL_32BIT_VALUE
 }
+
+fc2GrabMode = {
+	'DROP_FRAMES' : 0,
+    'BUFFER_FRAMES' : 1, 
+    'UNSPECIFIED_GRAB_MODE' : 2
+}
+
+fc2BusSpeed = {
+    'S100' : 0, # 100Mbits/sec. */
+    'S200' : 1, # 200Mbits/sec. */
+    'S400' : 2, # 400Mbits/sec. */
+    'S480' : 3, # 480Mbits/sec. Only for USB2 cameras. */
+    'S800' : 4, # 800Mbits/sec. */
+    'S1600' : 5, # 1600Mbits/sec. */
+    'S3200' : 6, # 3200Mbits/sec. */
+    'S5000' : 7, # 5000Mbits/sec. Only for USB3 cameras. */
+    '10BASE_T' : 8, # 10Base-T. Only for GigE cameras. */
+    '100BASE_T' : 9, # 100Base-T.  Only for GigE cameras.*/
+    '1000BASE_T' : 10, # 1000Base-T (Gigabit Ethernet).  Only for GigE cameras. */
+    '10000BASE_T' : 11, # 10000Base-T.  Only for GigE cameras. */
+    'S_FASTEST' : 12, # The fastest speed available. */
+    'ANY' : 13, # Any speed that is available. */
+    'SPEED_UNKNOWN' : -1 # Unknown bus speed. */
+}
+
+fc2BandwidthAllocation = {
+	'OFF' : 0,
+	'ON' : 1,
+	'UNSUPPORTED' : 2,
+	'UNSPECIFIED' : 3,
+}
+
+
+class fc2Config(Structure):
+	_fields_ = [
+				('numBuffers', c_uint),
+				('numImageNotifications', c_uint),
+				('minNumImageNotifications', c_uint),
+				('grabTimeout', c_int),
+				('grabMode', c_int),  
+				('isochBusSpeed', c_int), 
+				('asyncBusSpeed', c_int), 
+				('bandwidthAllocation', c_int), 
+				('registerTimeoutRetries', c_uint),
+				('registerTimeout', c_uint),
+				('reserved', c_uint*16)
+				] 
 
 class fc2TriggerMode(Structure):
 	_fields_ = [

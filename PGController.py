@@ -1,5 +1,8 @@
 from PGTypes import *
+from threading import Thread
 from ctypes import *
+
+# http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/group___enumerations.html#g7fcfd5d4f93c612885ac16a99ee04647
 
 FCDriver = CDLL('FlyCapture2_C')
 
@@ -37,6 +40,22 @@ class PointGreyController(object):
 		triggerMode.source = 7;
 		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
 
+	def setConfig(self):
+		config = fc2Config()
+		config.numBuffers = 4
+		config.numImageNotifications = 1
+		config.grabTimeout = -1
+		config.grabMode = fc2GrabMode['BUFFER_FRAMES']
+		config.isochBusSpeed = fc2BusSpeed['SPEED_UNKNOWN']
+		config.asyncBusSpeed = fc2BusSpeed['ANY']
+		config.bandwidthAllocation = fc2BandwidthAllocation['ON']
+		
+	def getConfig(self):
+		context = self.context
+		config = fc2Config()
+		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
+		return config	
+	
 	def initializeImage(self):
 		img = fc2Image()
 		handleError(FCDriver.fc2CreateImage(byref(img)))
@@ -55,19 +74,44 @@ class PointGreyController(object):
 	def saveImage(self, img, fname = 'test.png'):
 		fname = c_char_p(fname)
 		handleError(FCDriver.fc2SaveImage(byref(img), fname, 6))	
+	
+	def fireSoftwareTrigger(self):
+		context = self.context
+		handleError(FCDriver.fc2FireSoftwareTrigger(context))
 		
 	def stop(self):
 		context = self.context
 		handleError(FCDriver.fc2StopCapture(context))
 		handleError(FCDriver.fc2DestroyContext(context))
 
-PGC = PointGreyController()
-PGC.start()
-raw = PGC.initializeImage()
-print type(raw)
-PGC.retrieveImage(raw)
-converted = PGC.convertImg(raw)
-print type(converted)
-PGC.saveImage(converted)
-PGC.stop()
+class PointGreyTriggerThread(Thread):
+	def __init__(self, PGController, imgArray):
+		Thread.__init__(self)
+		self.PGC = PGController
+		self.imgArray = imgArray
+		
+	def run(self):
+		PGC = self.PGC
+		imgArray = self.imgArray
+		for img in imgArray:
+			print "Retrieving"
+			PGC.retrieveImage(img)
+
+# PGC = PointGreyController()
+# PGC.setConfig()
+# PGC.start()
+# PGC.enableTrigger()
+# raw1 = PGC.initializeImage()
+# raw2 = PGC.initializeImage()
+# raw_input('Waiting')
+# PGC.fireSoftwareTrigger()
+# raw_input('Waiting')
+# PGC.fireSoftwareTrigger()
+# PGC.retrieveImage(raw1)
+# PGC.retrieveImage(raw2)
+# con1 = PGC.convertImg(raw1)
+# con2 = PGC.convertImg(raw2)
+# PGC.saveImage(con1, 'img1.png')
+# PGC.saveImage(con2, 'img2.png')
+# PGC.stop()
 
