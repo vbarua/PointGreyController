@@ -24,9 +24,13 @@ def hexifier(fl):
 	return i
 	
 def floatifier(h):
+	neg = h & 0x80000000
+	h = h & 0x7fffffff
 	s = pack('>l', h)
 	''.join('%2.2x' % ord(c) for c in s)
 	i = unpack('>f', s)[0]
+	if neg:
+		i = -i
 	return i
 		
 class PointGreyController(object):
@@ -85,7 +89,11 @@ class PointGreyController(object):
 		config.bandwidthAllocation = fc2BandwidthAllocation['ON']
 		
 	def setExposureTime(self, ms):
-		if 0.005 < ms < 66.639:
+		min = 1000 * floatifier(self.getRegister(0x910))
+		max = 1000 * floatifier(self.getRegister(0x914))
+		
+		print min, max
+		if min < ms < max:
 			s = float(ms / 1000.)
 			s = hexifier(s)
 			self.setRegister(0x918, s)
@@ -94,7 +102,30 @@ class PointGreyController(object):
 		
 	def getExposureTime(self):
 		t = self.getRegister(0x918)
-		print t	
+		t = 1000. * floatifier(t)
+		return t
+		
+	def setGain(self, db):
+		min = floatifier(self.getRegister(0x920))
+		max = floatifier(self.getRegister(0x924))
+		
+		print min, max
+		if min < db < max:
+			db = float(db)
+			db = hexifier(db)
+			self.setRegister(0x928, db)
+		else:
+			print "Gain must be between blah"	
+
+
+	
+# 	def setGain(self, db):
+# 		if -6.264 < db < 24:
+# 			s = float(ms / 1000.)
+# 			s = hexifier(s)
+# 			self.setRegister(0x918, s)
+# 		else:
+# 			print "Exposure time must be between blah"
 		
 	def getImageSettings(self):
 		context = self.context
@@ -188,20 +219,20 @@ class PointGreyController(object):
 # 			print key, getattr(info, key)
 # 		return info
 		
-# PGC = PointGreyController()
+PGC = PointGreyController()
+PGC.setGain(10.3)
+
+
 # r = PGC.getRegister(0x720)
 # r = r * 4
+# print hex(r)
 # r = r & 0x0fffffff
-# print r
 # print hex(r)
 
 
 
 # print "PROPERTY"
-# PGC.printProperty(13)
-# print "HERE"
-# print type(info.absValue)
-# a = c_float(info.absValue)
+#PGC.printProperty(13)
 
 #PGC.getProperty(13)
 # PGC.setProperty(13, 7)
