@@ -1,9 +1,9 @@
 from PGTypes import *
 from threading import Thread
 from ctypes import *
+from struct import pack, unpack
 
-# http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/group___enumerations.html#g7fcfd5d4f93c612885ac16a99ee04647
-
+# http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 FCDriver = CDLL('FlyCapture2_C')
 
 
@@ -12,9 +12,22 @@ FCDriver = CDLL('FlyCapture2_C')
 
 def handleError(errorCode):
 	if errorCode:
+		print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
 		print errorCode
 		print fc2ErrorCodeStrings[errorCode]
 		
+def hexifier(fl):
+	# http://stackoverflow.com/questions/1922771/python-obtain-manipulate-as-integers-bit-patterns-of-floats
+	s = pack('>f', fl)
+	''.join('%2.2x' % ord(c) for c in s)
+	i = unpack('>l', s)[0]
+	return i
+	
+def floatifier(h):
+	s = pack('>l', h)
+	''.join('%2.2x' % ord(c) for c in s)
+	i = unpack('>f', s)[0]
+	return i
 		
 class PointGreyController(object):
 	
@@ -26,6 +39,21 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2GetCameraFromIndex(context, 0, byref(guid)))
 		self.guid = guid
 		handleError(FCDriver.fc2Connect(context, byref(guid)))
+		
+		#
+		self.setRegister(fc2Register['Initialize'], 0x80000000)
+		self.setRegister(fc2Register['Power'], 0x80000000)
+		
+		# Disables unused camera settings.
+		self.setRegister(fc2Register['AutoExposure'], 0x40000000)
+		self.setRegister(fc2Register['Sharpness'], 0x40000000) 
+		self.setRegister(fc2Register['Gamma'], 0x40000000) 
+		self.setRegister(fc2Register['Pan'], 0x40000000)
+		self.setRegister(fc2Register['Tilt'], 0x40000000)
+
+		# 
+		self.setRegister(fc2Register['Gain'], 0x42000000)
+		self.setRegister(fc2Register['Shutter'], 0x42000000)
 		
 	def start(self):
 		context = self.context
@@ -40,6 +68,12 @@ class PointGreyController(object):
 		triggerMode.source = 7;
 		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
 
+	def getConfig(self):
+		context = self.context
+		config = fc2Config()
+		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
+		return config
+
 	def setConfig(self):
 		config = fc2Config()
 		config.numBuffers = 4
@@ -50,11 +84,25 @@ class PointGreyController(object):
 		config.asyncBusSpeed = fc2BusSpeed['ANY']
 		config.bandwidthAllocation = fc2BandwidthAllocation['ON']
 		
-	def getConfig(self):
+	def setExposureTime(self, ms):
+		if 0.005 < ms < 66.639:
+			s = float(ms / 1000.)
+			s = hexifier(s)
+			self.setRegister(0x918, s)
+		else:
+			print "Exposure time must be between blah"	
+		
+	def getExposureTime(self):
+		t = self.getRegister(0x918)
+		print t	
+		
+	def getImageSettings(self):
 		context = self.context
-		config = fc2Config()
-		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
-		return config	
+		packetSize = c_uint()
+		percentage = c_float()
+		imageSettings = fc2Format7ImageSettings()
+		handleError(FCDriver.fc2GetFormat7Configuration(context, byref(imageSettings), byref(packetSize), byref(percentage)))
+		return imageSettings	
 	
 	def initializeImage(self):
 		img = fc2Image()
@@ -83,21 +131,95 @@ class PointGreyController(object):
 		context = self.context
 		handleError(FCDriver.fc2StopCapture(context))
 		handleError(FCDriver.fc2DestroyContext(context))
+	
+	def getRegister(self, addr):
+		context = self.context
+		val = c_ulong()
+		handleError(FCDriver.fc2ReadRegister(context, addr, byref(val)))
+		return val.value
+	
+	def setRegister(self, addr, val):
+		context = self.context
+		val = c_uint(val)
+		handleError(FCDriver.fc2WriteRegister(context, addr, val))
 
-class PointGreyTriggerThread(Thread):
-	def __init__(self, PGController, imgArray):
-		Thread.__init__(self)
-		self.PGC = PGController
-		self.imgArray = imgArray
+# 	def getProperty(self, propertyType):
+# 		context = self.context
+# 		property = fc2Property()
+# 		property.type = propertyType
+# 		handleError(FCDriver.fc2GetProperty(context, byref(property)))
+# 		print type(property)
+# 		return property 
+	
+# 	def printProperty(self, propertyType):
+# 		property = self.getProperty(propertyType)
+# 		for (key, val) in property._fields_:
+# 			t = getattr(property, key)
+# 			print key, t, type(t)
+	
+# 	def disableProperty(self, propertyType):
+# 		context = self.context
+# 		property = self.getProperty(propertyType)
+# 		property.onOff = True
+# 		property.onePush = False
+# 		property.autoManualMode = False
+# 		handleError(FCDriver.fc2SetProperty(context, byref(property)))
+ 	
+# 	def setProperty(self, propertyType, value):
+# 		context = self.context
+# 		property = fc2Property()
+# 		property.type = c_int(propertyType)
+# 		property.absControl = True
+# 		property.onePush = False
+# 		property.autoManualMode = False
+# 		property.absValue = c_float(value)
+# 		handleError(FCDriver.fc2SetProperty(context, byref(property)))
+# 	
+# 	def getPropertyInfo(self, propertyType):
+# 		context = self.context
+# 		info = fc2PropertyInfo()
+# 		info.type = propertyType
+# 		print "BEFORE"
+# 		for (key, val) in info._fields_:
+# 			print key, getattr(info, key)
+# 		print "AFTER"
+# 		handleError(FCDriver.fc2GetPropertyInfo(context, byref(info)))
+# 		for (key, val) in info._fields_:
+# 			print key, getattr(info, key)
+# 		return info
 		
-	def run(self):
-		PGC = self.PGC
-		imgArray = self.imgArray
-		for img in imgArray:
-			print "Retrieving"
-			PGC.retrieveImage(img)
-
 # PGC = PointGreyController()
+# r = PGC.getRegister(0x720)
+# r = r * 4
+# r = r & 0x0fffffff
+# print r
+# print hex(r)
+
+
+
+# print "PROPERTY"
+# PGC.printProperty(13)
+# print "HERE"
+# print type(info.absValue)
+# a = c_float(info.absValue)
+
+#PGC.getProperty(13)
+# PGC.setProperty(13, 7)
+
+
+# PGC.setExposureTime(0.1)
+# PGC.getExposureTime()
+
+#imSet = PGC.getImageSettings()
+#print imSet.mode
+#print imSet.offsetX
+#print imSet.offsetY
+#print imSet.width
+#print imSet.height
+#print hex(c_uint(imSet.pixelFormat).value)
+
+
+
 # PGC.setConfig()
 # PGC.start()
 # PGC.enableTrigger()

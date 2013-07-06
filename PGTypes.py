@@ -4,7 +4,7 @@ fc2Context = c_void_p
 fc2ImageImpl = c_void_p
 fc2PGRGuid = c_uint*4
 
-
+MAX_STRING_LENGTH = 512
 
 
 fc2ErrorCodeStrings = [
@@ -129,6 +129,125 @@ fc2BandwidthAllocation = {
 	'UNSPECIFIED' : 3,
 }
 
+fc2VideoMode = {
+    'MODE_0' : 0,
+    'MODE_1' : 1,
+    'MODE_2' : 2,
+    'MODE_3' : 3,
+    'MODE_4' : 4,
+    'MODE_5' : 5,
+    'MODE_6' : 6,
+    'MODE_7' : 7,
+    'MODE_8' : 8,
+    'MODE_9' : 9,
+    'MODE_10' : 10,
+    'MODE_11' : 11,
+    'MODE_12' : 12,
+    'MODE_13' : 13,
+    'MODE_14' : 14,
+    'MODE_15' : 15,
+    'MODE_16' : 16,
+    'MODE_17' : 17,
+    'MODE_18' : 18,
+    'MODE_19' : 19,
+    'MODE_20' : 20,
+    'MODE_21' : 21,
+    'MODE_22' : 22,
+    'MODE_23' : 23,
+    'MODE_24' : 24,
+    'MODE_25' : 25,
+    'MODE_26' : 26,
+    'MODE_27' : 27,
+    'MODE_28' : 28,
+    'MODE_29' : 29,
+    'MODE_30' : 30,
+    'MODE_31' : 31,
+}
+
+fc2PropertyType = {
+	'BRIGHTNESS' : 0,
+	'AUTO_EXPOSURE' : 1,
+	'SHARPNESS' : 2,
+	'WHITE_BALANCE' : 3,
+	'HUE' : 4,
+	'SATURATION' : 5,
+	'GAMMA' : 6,
+	'IRIS' : 7,
+	'FOCUS' : 8,
+	'ZOOM' : 9,
+	'PAN' : 10,
+	'TILT' : 11,
+	'SHUTTER' : 12,
+	'GAIN' : 13,
+	'TRIGGER_MODE' : 14,
+	'TRIGGER_DELAY' : 15,
+	'FRAME_RATE' : 16,
+	'TEMPERATURE' : 17,
+}
+
+fc2Register = {
+	'Initialize' : 0x000,
+	'Power' : 0x610,
+	'SoftwareTrigger' : 0x62C,
+	'Brightness' : 0x800,
+	'AutoExposure': 0x804,
+	'Sharpness' : 0x808,
+	'Gamma': 0x818,
+	'Shutter': 0x81C,
+	'Gain': 0x820,
+	'TriggerMode': 0x830,
+	'TriggerDelay': 0x834,
+	'FrameRate': 0x83C,
+	'Pan': 0x884,
+	'Tilt': 0x888,
+	'SoftwareTrigger': 0x62C,
+	'TriggerInq': 0x530
+}	
+
+class fc2Property(Structure):
+	_fields_ = [
+				('type', c_int),
+				('present', c_bool),
+				('absControl', c_bool),
+				('onePush', c_bool),
+				('onOff', c_bool),
+				('autoManualMode', c_bool),
+				('valueA', c_uint),  
+				('valueB', c_uint),
+				('absValue', c_float),
+				('reserved', c_uint*8)
+				]
+
+class fc2PropertyInfo(Structure):
+	_fields_ = [
+				('type', c_int),
+				('present', c_bool),
+				('autoSupported', c_bool),
+				('manualSupported', c_bool),
+				('onOffSupported', c_bool ),
+				('onePushSupported', c_bool),
+				('absValSupported', c_bool),
+				('readOutSupported', c_bool),
+				('min', c_uint),
+				('max', c_uint),
+				('absMin', c_float),
+				('absMax', c_float),
+				('pUnits', c_char * MAX_STRING_LENGTH),
+				('pUnitAbbr', c_char * MAX_STRING_LENGTH),
+				('reserved', c_uint*8)
+				]
+
+class fc2Format7ImageSettings(Structure):
+	_fields_ = [
+				('mode', c_int),
+				('offsetX', c_uint),
+				('offsetY', c_uint),
+				('width', c_uint),
+				('height', c_uint),
+				('pixelFormat', c_int),
+				('reserved', c_uint*8)	
+	]
+	
 
 class fc2Config(Structure):
 	_fields_ = [
