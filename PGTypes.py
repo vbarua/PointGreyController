@@ -205,6 +205,7 @@ fc2Register = {
 }	
 
 class fc2Property(Structure):
+		
 	_fields_ = [
 				('type', c_int),
 				('present', c_bool),
@@ -248,7 +249,6 @@ class fc2Format7ImageSettings(Structure):
 				('reserved', c_uint*8)	
 	]
 	
-
 class fc2Config(Structure):
 	_fields_ = [
 				('numBuffers', c_uint),

@@ -7,15 +7,8 @@ from struct import pack, unpack
 FCDriver = CDLL('FlyCapture2_C')
 
 
-#class FlyCaptureError(Exception):
-	
+# ----- Conversion Functions	----- #
 
-def handleError(errorCode):
-	if errorCode:
-		print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-		print errorCode
-		print fc2ErrorCodeStrings[errorCode]
-		
 def hexifier(fl):
 	# http://stackoverflow.com/questions/1922771/python-obtain-manipulate-as-integers-bit-patterns-of-floats
 	s = pack('>f', fl)
@@ -32,10 +25,108 @@ def floatifier(h):
 	if neg:
 		i = -i
 	return i
+	
+# ----- Region of Interest ----- #
+
+class ROIError(Exception):
+	"""For errors in setting the Region of Interest"""
+	def __init__(self, value, issueStr):
+		self.issueStr = issueStr
 		
-class PointGreyController(object):
+	def __str__(self):
+		return repr(self.issueStr + str(value))
+
+class ROI(object):
+	"""Defines the region of interest of the camera."""
 	
 	def __init__(self):
+		self.posLeft = 0
+		self.posTop = 0
+		self.width = 960
+		self.height = 1280
+	
+	def __str__(self):
+		return 'Left: %d, Top: %d, Width: %d, Height: %d' % (self.posLeft, self.posTop, self.width, self.height)
+	
+	def checkValues(self):
+		"""Verifies validity of ROI Values for Flea2 Camera."""
+		posTop = self.posTop	#Pixels from left to start ROI.
+		posLeft = self.posLeft	#Pixels from top to start ROI.
+		width = self.width		#Width (in pixels) of the ROI.
+		height = self.height	#Height (in pixels) of the ROI.
+		if not(0 <= posTop < 960):
+			raise ROIError(posTop, 'Top must be between 0 and 960. Currently ') 
+		if not(0 <= posLeft < 1280):
+			raise ROIError(posLeft, 'Left must be between 0 and 1280. Currently ')
+		if not(0 <= width <= 960):
+			raise ROIError(width, 'Width must be between 0 and 960. Currently ') 
+		if not(0 <= height <= 1280):
+			raise ROIError(posTop, 'Height must be between 0 and 960. Currently ') 
+		if not(0 < posTop + height <= 960):
+			raise ROIError(posTop + height, 'Top + height must be <= 960. Currently ')
+		if not(0< posLeft + width <= 1280):
+			raise 0 < ROIError(posLeft + width, 'Left + width must be <=1280. Currently ')
+	
+	def setROI(self, posLeft, posTop, width, height):
+		"""Sets the ROI parameters explicitly."""
+		self.posLeft = posLeft - posLeft % 2	#Pixels from left to start ROI.
+		self.posTop = posTop - posTop % 2 		#Pixels from top to start ROI.
+		self.width = int(ceil(width / 8.) * 8) 	#Width (in pixels) of the ROI.
+		self.height = height + height % 2		#Height (in pixels) of the ROI.
+		self.checkValues()
+	
+	def setROICenter(center, width, height):
+		"""
+		Sets the ROI parameters based on where the image center should be along
+		with the width and height. center is a tuple of the form (x, y).
+		"""
+		x = center(0)
+		y = center(1)
+		self.width = int(ceil(width / 8.) * 8) 	#Width (in pixels) of the ROI.
+		self.height = height + height % 2		#Height (in pixels) of the ROI.
+		hWidth = self.width/2
+		hHeight = self.height/2
+		l = x - hWidth
+		t = y - hHight
+		self.posLeft = l - l % 2
+		self.posTop = t - t % 2
+		self.checkValues()	
+	
+# ----- Point Grey Controller ----- #
+
+def handleError(errorCode):
+	if errorCode:
+		raise flyCaptureError(errorCode)
+		
+class propertyError(Exception):
+	"""For errors when setting camera property values"""
+	def __init__(self, name, value, min, max, units):
+		self.value = value
+		self.min = min
+		self.max = max
+		self.units = units
+	
+	def __str__(self):
+		return repr('%s %f %s is outside of range %f to %f.' % self.name, self.value, self.units, self.min, self.max, self.units)		
+
+class flyCaptureError(Exception):
+	'''For errors returned from FlyCapture2 API calls'''
+	def __init__(self, errorCode):
+		self.errorCode = errorCode
+		self.msg = fc2ErrorCodeStrings[self.errorCode]
+		
+	def __str__(self):
+		
+		return repr(self.msg)
+	
+class PointGreyController(object):
+	
+	def __init__(self, numOfImages = 4, expTime_ms = 15, gain = 0, roi = ROI()):
+		self.numOfImages = numOfImages
+		self.expTime_ms = expTime_ms
+		self.gain = 0
+		self.roi = False
+		
 		context = fc2Context()
 		handleError(FCDriver.fc2CreateContext(byref(context)))		
 		self.context = context
@@ -44,7 +135,7 @@ class PointGreyController(object):
 		self.guid = guid
 		handleError(FCDriver.fc2Connect(context, byref(guid)))
 		
-		#
+		# Re-initialize and re-power camera.
 		self.setRegister(fc2Register['Initialize'], 0x80000000)
 		self.setRegister(fc2Register['Power'], 0x80000000)
 		
@@ -55,14 +146,36 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Pan'], 0x40000000)
 		self.setRegister(fc2Register['Tilt'], 0x40000000)
 
-		# 
+		# Initialize Gain and Shutter  settings.
 		self.setRegister(fc2Register['Gain'], 0x42000000)
+		self.setGain(gain)
 		self.setRegister(fc2Register['Shutter'], 0x42000000)
+		self.setExposureTime(expTime_ms)
+		
+		# Set camera region of interest.
+		self.setROI(roi)
+		
+			
+		
+		# Set the number of images to collect.
+		self.setNumberOfImages(numOfImages)
 		
 	def start(self):
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
 
+	def setROI(self, roi):
+		context = self.context
+		imSet = fc2Format7ImageSettings()
+		imSet.mode = 0
+		imSet.offsetX = roi.posLeft 
+		imSet.offsetY = roi.posTop
+		imSet.width = roi.width
+		imSet.height = roi.height
+		imSet.pixelFormat = fc2PixelFormat['MONO8'] 
+		percentSpeed = c_float(50)
+		handleError(FCDriver.fc2SetFormat7Configuration(context, byref(imSet), percentSpeed))
+	
 	def enableTrigger(self):
 		context = self.context
 		triggerMode = fc2TriggerMode()
@@ -78,7 +191,7 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
 		return config
 
-	def setConfig(self):
+	def setNumberOfImages(self, numOfImages):
 		config = fc2Config()
 		config.numBuffers = 4
 		config.numImageNotifications = 1
@@ -91,14 +204,12 @@ class PointGreyController(object):
 	def setExposureTime(self, ms):
 		min = 1000 * floatifier(self.getRegister(0x910))
 		max = 1000 * floatifier(self.getRegister(0x914))
-		
-		print min, max
 		if min < ms < max:
 			s = float(ms / 1000.)
 			s = hexifier(s)
 			self.setRegister(0x918, s)
 		else:
-			print "Exposure time must be between blah"	
+			raise propertyError('Exposure time', ms, min, max, 'ms')
 		
 	def getExposureTime(self):
 		t = self.getRegister(0x918)
@@ -108,24 +219,17 @@ class PointGreyController(object):
 	def setGain(self, db):
 		min = floatifier(self.getRegister(0x920))
 		max = floatifier(self.getRegister(0x924))
-		
-		print min, max
 		if min < db < max:
 			db = float(db)
 			db = hexifier(db)
 			self.setRegister(0x928, db)
 		else:
-			print "Gain must be between blah"	
-
-
+			raise propertyError('Gain', db, min, max, 'db')
 	
-# 	def setGain(self, db):
-# 		if -6.264 < db < 24:
-# 			s = float(ms / 1000.)
-# 			s = hexifier(s)
-# 			self.setRegister(0x918, s)
-# 		else:
-# 			print "Exposure time must be between blah"
+	def getGain(self):
+		g = self.getRegister(0x928)
+		g = floatifier(g)
+		return g
 		
 	def getImageSettings(self):
 		context = self.context
@@ -133,6 +237,8 @@ class PointGreyController(object):
 		percentage = c_float()
 		imageSettings = fc2Format7ImageSettings()
 		handleError(FCDriver.fc2GetFormat7Configuration(context, byref(imageSettings), byref(packetSize), byref(percentage)))
+		for (key, val) in imageSettings.__fields__:
+			print key, getattr(imageSettings, key)
 		return imageSettings	
 	
 	def initializeImage(self):
@@ -218,53 +324,30 @@ class PointGreyController(object):
 # 		for (key, val) in info._fields_:
 # 			print key, getattr(info, key)
 # 		return info
-		
+
+
+roi = ROI()		
 PGC = PointGreyController()
-PGC.setGain(10.3)
-
-
-# r = PGC.getRegister(0x720)
-# r = r * 4
-# print hex(r)
-# r = r & 0x0fffffff
-# print hex(r)
+# PGC.getImageSettings()
 
 
 
-# print "PROPERTY"
-#PGC.printProperty(13)
-
-#PGC.getProperty(13)
-# PGC.setProperty(13, 7)
-
-
-# PGC.setExposureTime(0.1)
-# PGC.getExposureTime()
-
-#imSet = PGC.getImageSettings()
-#print imSet.mode
-#print imSet.offsetX
-#print imSet.offsetY
-#print imSet.width
-#print imSet.height
-#print hex(c_uint(imSet.pixelFormat).value)
-
+# Used to take images
+PGC.start()
+PGC.enableTrigger()
+raw1 = PGC.initializeImage()
+raw2 = PGC.initializeImage()
+raw_input('Waiting')
+PGC.fireSoftwareTrigger()
+raw_input('Waiting')
+PGC.fireSoftwareTrigger()
+PGC.retrieveImage(raw1)
+PGC.retrieveImage(raw2)
+con1 = PGC.convertImg(raw1)
+con2 = PGC.convertImg(raw2)
+PGC.saveImage(con1, 'img1.png')
+PGC.saveImage(con2, 'img2.png')
+PGC.stop()
 
 
-# PGC.setConfig()
-# PGC.start()
-# PGC.enableTrigger()
-# raw1 = PGC.initializeImage()
-# raw2 = PGC.initializeImage()
-# raw_input('Waiting')
-# PGC.fireSoftwareTrigger()
-# raw_input('Waiting')
-# PGC.fireSoftwareTrigger()
-# PGC.retrieveImage(raw1)
-# PGC.retrieveImage(raw2)
-# con1 = PGC.convertImg(raw1)
-# con2 = PGC.convertImg(raw2)
-# PGC.saveImage(con1, 'img1.png')
-# PGC.saveImage(con2, 'img2.png')
-# PGC.stop()
 
