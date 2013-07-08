@@ -3,6 +3,7 @@ from threading import Thread
 from ctypes import *
 from struct import pack, unpack
 from math import ceil
+from time import sleep
 
 # http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 FCDriver = CDLL('FlyCapture2_C')
@@ -91,7 +92,29 @@ class ROI(object):
 		self.posLeft = l - l % 2
 		self.posTop = t - t % 2
 		self.checkValues()	
+
+# ----- Timestamp ----- #
+
+class Timestamp(object):
+	"""Used to store and decode image timestamps."""
+
+	secondsPerCount = 1./8000.
+	countsPerOffset = 1./3072.
 	
+	def __init__(self, s = 0., c = 0., o = 0.):
+		self.seconds = s
+		self.count = c
+		self.offset = o
+		
+	def setTimestamp(self, s, c, o):
+		self.seconds = s
+		self.count = c
+		self.offset = o
+	
+	def decodeTime(self):
+		"""Converts timestamp to time in seconds based on FlyCapture Documentation."""
+		return self.seconds + (self.count+self.offset*self.countsPerOffset)*self.secondsPerCount
+		
 # ----- Point Grey Controller ----- #
 
 def handleError(errorCode):
@@ -119,11 +142,11 @@ class flyCaptureError(Exception):
 	
 class PointGreyController(object):
 	
-	def __init__(self, numOfImages = 4, expTime_ms = 15, gain = 0, roi = ROI()):
+	def __init__(self, numOfImages = 4, expTime_ms = 15, gain = 0, roi = False):
 		self.numOfImages = numOfImages
 		self.expTime_ms = expTime_ms
 		self.gain = 0
-		self.roi = False
+		self.roi = roi
 		
 		context = fc2Context()
 		handleError(FCDriver.fc2CreateContext(byref(context)))		
@@ -139,9 +162,11 @@ class PointGreyController(object):
 		
 		# Set camera configuration
 		self.setConfig(numOfImages)
+		self.enableTimestamps()
 		
 		# Set camera region of interest.
-		# self.setImageSettings(roi)
+		if roi:
+			self.setImageSettings(roi)
 		
 		# Disables unused camera settings.
 		self.setRegister(fc2Register['AutoExposure'], 0x40000000)
@@ -154,13 +179,31 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Gain'], 0x42000000)
 		self.setGain(gain)
 		self.setRegister(fc2Register['Shutter'], 0x42000000)
-		self.setExposureTime(expTime_ms)		
+		self.setExposureTime(expTime_ms)
 	
 	def start(self):
+		'''Start collecting images.'''
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
+		
+	def stop(self):
+		'''Stop collecting images and disassociate context from camera.'''
+		context = self.context
+		handleError(FCDriver.fc2StopCapture(context))
+		handleError(FCDriver.fc2DestroyContext(context))	
+	
+	def clearBuffer(self):
+		context = self.context
+		im = self.initializeImage()
+		while True:
+			e	= FCDriver.fc2RetrieveBuffer(context, byref(im))
+			if e == 18:	# Timeout
+				return
+			elif e != 0:	# Other error
+				handleError(e)
 
 	def setImageSettings(self, roi):
+		'''Used to set custom image sizes.'''
 		context = self.context
 		imSet = fc2Format7ImageSettings()
 		imSet.mode = 0
@@ -168,11 +211,12 @@ class PointGreyController(object):
 		imSet.offsetY = roi.posTop
 		imSet.width = roi.width
 		imSet.height = roi.height
-		imSet.pixelFormat = fc2PixelFormat['MONO16'] 
-		percentSpeed = c_float(0.5)
+		imSet.pixelFormat = fc2PixelFormat['MONO8'] 
+		percentSpeed = c_float(50)
 		handleError(FCDriver.fc2SetFormat7Configuration(context, byref(imSet), percentSpeed))
 	
-	def enableTrigger(self):
+	def enableSoftwareTrigger(self):
+		'''Enable software triggering of camera.'''
 		context = self.context
 		triggerMode = fc2TriggerMode()
 		triggerMode.onOff = True
@@ -180,7 +224,56 @@ class PointGreyController(object):
 		triggerMode.parameter = 0;
 		triggerMode.source = 7;
 		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
+	
+	def fireSoftwareTrigger(self):
+		context = self.context
+		while self.getRegister(0x62C):
+			print "Trigger not ready."
+			pass
+		handleError(FCDriver.fc2FireSoftwareTrigger(context))		
+	
+	def enableHardwareTrigger(self):
+		'''Enable hardware triggering of camera.'''
+		context = self.context
+		triggerMode = fc2TriggerMode()
+		triggerMode.onOff = True
+		triggerMode.mode = 0;
+		triggerMode.parameter = 0;
+		triggerMode.source = 0;
+		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
+		while (self.getRegister(0x62C) & 0x001):
+			pass		
+			
+	def enableTimestamps(self):
+		'''Turns embedded image timestamps on'''
+		self.setRegister(0x12F8, 0x00000001)
+		
+	def parseTimestamp(self, im):
+		'''Parses the timestamp encoded in an image.'''
+		def binarify(n, d):
+			'''
+			Outputs a string representing the binary representation of n with d digits,
+			adding padding zeros on the left.
+			'''
+			s = bin(n)
+			s = s[2:]
+			while len(s) < d:
+				s = '0' + s
+			return s
+		
+		data = im.pData
+		byteString = data[0:4]
+		byteArray = map(ord, byteString)
+		acc = ''
+		for b in byteArray:
+			acc += binarify(b, 8)
 
+		secondCount = int(acc[0:7], 2)
+		cycleCount = int(acc[7:20], 2)
+		cycleOffset = int(acc[20:], 2)
+		timestamp = Timestamp(secondCount, cycleCount, cycleOffset)
+		return timestamp.decodeTime()
+			
 	def getConfig(self):
 		context = self.context
 		config = fc2Config()
@@ -188,15 +281,22 @@ class PointGreyController(object):
 		return config
 
 	def setConfig(self, numOfImages):
+		context = self.context
 		config = fc2Config()
-		config.numBuffers = 4
+		config.numBuffers = numOfImages + 1
 		config.numImageNotifications = 1
-		config.grabTimeout = -1
+		config.grabTimeout = 100
 		config.grabMode = fc2GrabMode['BUFFER_FRAMES']
 		config.isochBusSpeed = fc2BusSpeed['SPEED_UNKNOWN']
 		config.asyncBusSpeed = fc2BusSpeed['ANY']
 		config.bandwidthAllocation = fc2BandwidthAllocation['ON']
+		handleError(FCDriver.fc2SetConfiguration(context, byref(config)))
 		
+	def getExposureTime(self):
+		t = self.getRegister(0x918)
+		t = 1000. * floatifier(t)
+		return t
+	
 	def setExposureTime(self, ms):
 		min = 1000 * floatifier(self.getRegister(0x910))
 		max = 1000 * floatifier(self.getRegister(0x914))
@@ -207,10 +307,10 @@ class PointGreyController(object):
 		else:
 			raise propertyError('Exposure time', ms, min, max, 'ms')
 		
-	def getExposureTime(self):
-		t = self.getRegister(0x918)
-		t = 1000. * floatifier(t)
-		return t
+	def getGain(self):
+		g = self.getRegister(0x928)
+		g = floatifier(g)
+		return g
 		
 	def setGain(self, db):
 		min = floatifier(self.getRegister(0x920))
@@ -222,21 +322,6 @@ class PointGreyController(object):
 		else:
 			raise propertyError('Gain', db, min, max, 'db')
 	
-	def getGain(self):
-		g = self.getRegister(0x928)
-		g = floatifier(g)
-		return g
-		
-	def getImageSettings(self):
-		context = self.context
-		packetSize = c_uint()
-		percentage = c_float()
-		imageSettings = fc2Format7ImageSettings()
-		handleError(FCDriver.fc2GetFormat7Configuration(context, byref(imageSettings), byref(packetSize), byref(percentage)))
-		for (key, val) in imageSettings.__fields__:
-			print key, getattr(imageSettings, key)
-		return imageSettings	
-	
 	def initializeImage(self):
 		img = fc2Image()
 		handleError(FCDriver.fc2CreateImage(byref(img)))
@@ -246,7 +331,7 @@ class PointGreyController(object):
 		context = self.context
 		handleError(FCDriver.fc2RetrieveBuffer(context, byref(img)))
 		
-	def convertImg(self, rawImage):
+	def convertImage(self, rawImage):
 		convertedImage = fc2Image()
 		handleError(FCDriver.fc2CreateImage(byref(convertedImage)))
 		handleError(FCDriver.fc2ConvertImageTo(fc2PixelFormat['BGR'], byref(rawImage), byref(convertedImage)))
@@ -255,15 +340,6 @@ class PointGreyController(object):
 	def saveImage(self, img, fname = 'test.png'):
 		fname = c_char_p(fname)
 		handleError(FCDriver.fc2SaveImage(byref(img), fname, 6))	
-	
-	def fireSoftwareTrigger(self):
-		context = self.context
-		handleError(FCDriver.fc2FireSoftwareTrigger(context))
-		
-	def stop(self):
-		context = self.context
-		handleError(FCDriver.fc2StopCapture(context))
-		handleError(FCDriver.fc2DestroyContext(context))
 	
 	def getRegister(self, addr):
 		context = self.context
@@ -275,77 +351,84 @@ class PointGreyController(object):
 		context = self.context
 		val = c_uint(val)
 		handleError(FCDriver.fc2WriteRegister(context, addr, val))
-
-# 	def getProperty(self, propertyType):
-# 		context = self.context
-# 		property = fc2Property()
-# 		property.type = propertyType
-# 		handleError(FCDriver.fc2GetProperty(context, byref(property)))
-# 		print type(property)
-# 		return property 
-	
-# 	def printProperty(self, propertyType):
-# 		property = self.getProperty(propertyType)
-# 		for (key, val) in property._fields_:
-# 			t = getattr(property, key)
-# 			print key, t, type(t)
-	
-# 	def disableProperty(self, propertyType):
-# 		context = self.context
-# 		property = self.getProperty(propertyType)
-# 		property.onOff = True
-# 		property.onePush = False
-# 		property.autoManualMode = False
-# 		handleError(FCDriver.fc2SetProperty(context, byref(property)))
- 	
-# 	def setProperty(self, propertyType, value):
-# 		context = self.context
-# 		property = fc2Property()
-# 		property.type = c_int(propertyType)
-# 		property.absControl = True
-# 		property.onePush = False
-# 		property.autoManualMode = False
-# 		property.absValue = c_float(value)
-# 		handleError(FCDriver.fc2SetProperty(context, byref(property)))
-# 	
-# 	def getPropertyInfo(self, propertyType):
-# 		context = self.context
-# 		info = fc2PropertyInfo()
-# 		info.type = propertyType
-# 		print "BEFORE"
-# 		for (key, val) in info._fields_:
-# 			print key, getattr(info, key)
-# 		print "AFTER"
-# 		handleError(FCDriver.fc2GetPropertyInfo(context, byref(info)))
-# 		for (key, val) in info._fields_:
-# 			print key, getattr(info, key)
-# 		return info
-
-
+		
+		
+		
+numOfImages = 5		
 roi = ROI()		
-roi.setROI(50, 200, 360, 400)
-print roi
-PGC = PointGreyController()
-# PGC.getImageSettings()
-
-
-
-# Used to take images
+roi.setROI(50, 200, 300, 600)
+PGC = PointGreyController(numOfImages, 30, 0)
+PGC.enableSoftwareTrigger()
+print "Trigger Enabled"
 PGC.start()
-PGC.enableTrigger()
-raw1 = PGC.initializeImage()
-raw2 = PGC.initializeImage()
-raw_input('Waiting')
-PGC.fireSoftwareTrigger()
-raw_input('Waiting')
-PGC.fireSoftwareTrigger()
-PGC.retrieveImage(raw1)
-PGC.retrieveImage(raw2)
-con1 = PGC.convertImg(raw1)
-con2 = PGC.convertImg(raw2)
-PGC.saveImage(con1, 'img1.png')
-PGC.saveImage(con2, 'img2.png')
+PGC.clearBuffer()
+
+rawImages = [PGC.initializeImage() for _ in range(numOfImages)]
+# Used to take images
+print "Firing Triggers"
+for i in range(numOfImages):
+	# sleep(2.)
+	print "Fire " + str(i)
+	PGC.fireSoftwareTrigger()
+
+conImages = [[]]*numOfImages	
+	
+print "Retrieving Images"	
+for im in rawImages:
+	PGC.retrieveImage(im)
+	print PGC.parseTimestamp(im)
+	
+
+print "Converting Images"
+for i in range(len(conImages)):
+	conImages[i] = PGC.convertImage(rawImages[i])
+
+print "Saving"
+i = 0	
+for im in conImages:
+	fname = str(i) + '.png'
+	i += 1
+	PGC.saveImage(im, fname)
+
+# raw1 = PGC.initializeImage()
+# raw2 = PGC.initializeImage()
+# raw3 = PGC.initializeImage()
+# raw4 = PGC.initializeImage()
+# raw5 = PGC.initializeImage()
+# print "Firing Trigger"
+# raw_input()
+# PGC.fireSoftwareTrigger()
+# raw_input()
+# PGC.fireSoftwareTrigger()
+# PGC.fireSoftwareTrigger()
+# PGC.fireSoftwareTrigger()
+# PGC.fireSoftwareTrigger()
+# print "Retrieving Images"
+# PGC.retrieveImage(raw1)
+# print "1"
+# PGC.retrieveImage(raw2)
+# print "2"
+# PGC.retrieveImage(raw3)
+# print "3"
+# PGC.retrieveImage(raw4)
+# print "4"
+# PGC.retrieveImage(raw5)
+# print "5"
+# print "Converting"
+# con1 = PGC.convertImg(raw1)
+# con2 = PGC.convertImg(raw2)
+# con3 = PGC.convertImg(raw3)
+# con4 = PGC.convertImg(raw4)
+# con5 = PGC.convertImg(raw5)
+# print "Saving"
+# PGC.saveImage(con1, 'img1.png')
+# PGC.saveImage(con2, 'img2.png')
+# PGC.saveImage(con3, 'img3.png')
+# PGC.saveImage(con4, 'img4.png')
+# PGC.saveImage(con5, 'img5.png')	
+	
 PGC.stop()
+
 
 
 

@@ -274,7 +274,6 @@ class fc2TriggerMode(Structure):
 				('reserved[8]', c_uint)
 				]
 
-
 class fc2Version(Structure):
 	_fields_ = [
 				('major', c_uint),
@@ -295,3 +294,33 @@ class fc2Image(Structure):
 				('bayerFormat', c_uint),	# FC2BayerTileFormat
 				('imageImpl', fc2ImageImpl)	
 				]
+				
+class fc2Timestamp(Structure):
+	_fields_ = [
+	('seconds', c_longlong),
+	('microSeconds', c_uint),
+	('cycleSeconds', c_uint),
+	('cycleCount', c_uint),
+	('cycleOffset', c_uint),
+	('reserved',  c_uint*8)
+	]
+				
+# class fc2EmbeddedImageInfoProperty(Structure):
+	# _fields_ = [
+			# ('available', c_bool),
+			# ('onOff', c_bool)
+			# ]
+		
+# class fc2EmbeddedImageInfo(Structure):
+	# _fields_= [
+			    # ('timestamp', fc2EmbeddedImageInfoProperty),
+				# ('gain', fc2EmbeddedImageInfoProperty),
+				# ('shutter', fc2EmbeddedImageInfoProperty),
+				# ('brightness', fc2EmbeddedImageInfoProperty),
+				# ('exposure', fc2EmbeddedImageInfoProperty),
+				# ('whiteBalance', fc2EmbeddedImageInfoProperty),
+				# ('frameCounter', fc2EmbeddedImageInfoProperty),
+				# ('strobePattern', fc2EmbeddedImageInfoProperty),
+				# ('GPIOPinState', fc2EmbeddedImageInfoProperty),
+				# ('ROIPosition', fc2EmbeddedImageInfoProperty)
+				# ]
