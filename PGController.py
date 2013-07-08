@@ -2,10 +2,10 @@ from PGTypes import *
 from threading import Thread
 from ctypes import *
 from struct import pack, unpack
+from math import ceil
 
 # http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 FCDriver = CDLL('FlyCapture2_C')
-
 
 # ----- Conversion Functions	----- #
 
@@ -101,13 +101,12 @@ def handleError(errorCode):
 class propertyError(Exception):
 	"""For errors when setting camera property values"""
 	def __init__(self, name, value, min, max, units):
-		self.value = value
-		self.min = min
-		self.max = max
-		self.units = units
+		msg = '%s %f %s is outside of range %f to %f.' % (name, value, units, min, max)
+		msg = '!!!!! ' + msg
+		print msg
 	
 	def __str__(self):
-		return repr('%s %f %s is outside of range %f to %f.' % self.name, self.value, self.units, self.min, self.max, self.units)		
+		return repr(self.msg)		
 
 class flyCaptureError(Exception):
 	'''For errors returned from FlyCapture2 API calls'''
@@ -116,7 +115,6 @@ class flyCaptureError(Exception):
 		self.msg = fc2ErrorCodeStrings[self.errorCode]
 		
 	def __str__(self):
-		
 		return repr(self.msg)
 	
 class PointGreyController(object):
@@ -139,6 +137,12 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Initialize'], 0x80000000)
 		self.setRegister(fc2Register['Power'], 0x80000000)
 		
+		# Set camera configuration
+		self.setConfig(numOfImages)
+		
+		# Set camera region of interest.
+		# self.setImageSettings(roi)
+		
 		# Disables unused camera settings.
 		self.setRegister(fc2Register['AutoExposure'], 0x40000000)
 		self.setRegister(fc2Register['Sharpness'], 0x40000000) 
@@ -146,25 +150,17 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Pan'], 0x40000000)
 		self.setRegister(fc2Register['Tilt'], 0x40000000)
 
-		# Initialize Gain and Shutter  settings.
+		# Initialize Gain and Shutter settings.
 		self.setRegister(fc2Register['Gain'], 0x42000000)
 		self.setGain(gain)
 		self.setRegister(fc2Register['Shutter'], 0x42000000)
-		self.setExposureTime(expTime_ms)
-		
-		# Set camera region of interest.
-		self.setROI(roi)
-		
-			
-		
-		# Set the number of images to collect.
-		self.setNumberOfImages(numOfImages)
-		
+		self.setExposureTime(expTime_ms)		
+	
 	def start(self):
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
 
-	def setROI(self, roi):
+	def setImageSettings(self, roi):
 		context = self.context
 		imSet = fc2Format7ImageSettings()
 		imSet.mode = 0
@@ -172,8 +168,8 @@ class PointGreyController(object):
 		imSet.offsetY = roi.posTop
 		imSet.width = roi.width
 		imSet.height = roi.height
-		imSet.pixelFormat = fc2PixelFormat['MONO8'] 
-		percentSpeed = c_float(50)
+		imSet.pixelFormat = fc2PixelFormat['MONO16'] 
+		percentSpeed = c_float(0.5)
 		handleError(FCDriver.fc2SetFormat7Configuration(context, byref(imSet), percentSpeed))
 	
 	def enableTrigger(self):
@@ -191,7 +187,7 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
 		return config
 
-	def setNumberOfImages(self, numOfImages):
+	def setConfig(self, numOfImages):
 		config = fc2Config()
 		config.numBuffers = 4
 		config.numImageNotifications = 1
@@ -327,6 +323,8 @@ class PointGreyController(object):
 
 
 roi = ROI()		
+roi.setROI(50, 200, 360, 400)
+print roi
 PGC = PointGreyController()
 # PGC.getImageSettings()
 
