@@ -1,38 +1,47 @@
-numOfImages = 5		
+from PointGreyController import *
+
+numOfImages = 10	
 roi = ROI()		
 roi.setROI(50, 200, 300, 600)
+
 PGC = PointGreyController(numOfImages, 30, 0)
 PGC.enableSoftwareTrigger()
 print "Trigger Enabled"
 PGC.start()
 PGC.clearBuffer()
 
-rawImages = [PGC.initializeImage() for _ in range(numOfImages)]
+
+
+
+# rawImages = [PGC.initializeImage() for _ in range(numOfImages)]
 # Used to take images
 print "Firing Triggers"
 for i in range(numOfImages):
-	# sleep(2.)
 	print "Fire " + str(i)
 	PGC.fireSoftwareTrigger()
 
-conImages = [[]]*numOfImages	
+PGC.retrieveImages()
+PGC.convertImages()
+PGC.extractTimestamps()	
+PGC.savePNGImages()
+PGC.saveLog()
 	
-print "Retrieving Images"	
-for im in rawImages:
-	PGC.retrieveImage(im)
-	print PGC.parseTimestamp(im)
+	
+# conImages = [[]]*numOfImages	
+	
+# print "Retrieving Images"	
+# for im in rawImages:
+	# PGC.retrieveImage(im)
+	# print type(im.pData)
+	# print PGC.parseTimestamp(im)
 	
 
-print "Converting Images"
-for i in range(len(conImages)):
-	conImages[i] = PGC.convertImage(rawImages[i])
+# print "Converting Images"
+# for i in range(len(conImages)):
+	# conImages[i] = PGC.convertImage(rawImages[i])
 
-print "Saving"
-i = 0	
-for im in conImages:
-	fname = str(i) + '.png'
-	i += 1
-	PGC.saveImage(im, fname)
+# print "Saving"
+
 
 # raw1 = PGC.initializeImage()
 # raw2 = PGC.initializeImage()

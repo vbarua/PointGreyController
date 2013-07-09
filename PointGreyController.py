@@ -1,4 +1,4 @@
-from PGTypes import *
+from PointGreyTypes import *
 from threading import Thread
 from ctypes import *
 from struct import pack, unpack
