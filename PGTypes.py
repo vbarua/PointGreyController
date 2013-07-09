@@ -304,23 +304,3 @@ class fc2Timestamp(Structure):
 	('cycleOffset', c_uint),
 	('reserved',  c_uint*8)
 	]
-				
-# class fc2EmbeddedImageInfoProperty(Structure):
-	# _fields_ = [
-			# ('available', c_bool),
-			# ('onOff', c_bool)
-			# ]
-		
-# class fc2EmbeddedImageInfo(Structure):
-	# _fields_= [
-			    # ('timestamp', fc2EmbeddedImageInfoProperty),
-				# ('gain', fc2EmbeddedImageInfoProperty),
-				# ('shutter', fc2EmbeddedImageInfoProperty),
-				# ('brightness', fc2EmbeddedImageInfoProperty),
-				# ('exposure', fc2EmbeddedImageInfoProperty),
-				# ('whiteBalance', fc2EmbeddedImageInfoProperty),
-				# ('frameCounter', fc2EmbeddedImageInfoProperty),
-				# ('strobePattern', fc2EmbeddedImageInfoProperty),
-				# ('GPIOPinState', fc2EmbeddedImageInfoProperty),
-				# ('ROIPosition', fc2EmbeddedImageInfoProperty)
-				# ]
