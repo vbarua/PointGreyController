@@ -10,9 +10,14 @@ FCDriver = CDLL('FlyCapture2_C')
 # http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 
 
-# ----- Conversion Functions	----- #
+# ----- Conversion Functions ----- #
 
 def hexifier(fl):
+	'''
+	Converts a floating point number into a number corresponding to its
+	hexadecimal/binary representation. Used to convert settings values for input
+	into the camera registers.
+	'''
 	# Taken from:
 	# http://stackoverflow.com/questions/1922771/python-obtain-manipulate-as-integers-bit-patterns-of-floats
 	s = pack('>f', fl)
@@ -21,6 +26,10 @@ def hexifier(fl):
 	return i
 	
 def floatifier(h):
+	'''
+	Converts a hexademical value returned by the camera registers to a floating
+	point number.
+	'''
 	neg = h & 0x80000000
 	h = h & 0x7fffffff
 	s = pack('>l', h)
@@ -104,12 +113,7 @@ class Timestamp(object):
 	secondsPerCount = 1./8000.
 	countsPerOffset = 1./3072.
 	
-	def __init__(self, s = 0., c = 0., o = 0.):
-		self.seconds = s
-		self.count = c
-		self.offset = o
-		
-	def setTimestamp(self, s, c, o):
+	def __init__(self, s, c, o):
 		self.seconds = s
 		self.count = c
 		self.offset = o
@@ -121,6 +125,10 @@ class Timestamp(object):
 # ----- Point Grey Controller ----- #
 
 def handleError(errorCode):
+	'''
+	Wrapper for FlyCapture2 API function calls which handles the error
+	codes it returns.
+	'''
 	if errorCode:
 		raise flyCaptureError(errorCode)
 		
@@ -161,7 +169,7 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Initialize'], 0x80000000)
 		self.setRegister(fc2Register['Power'], 0x80000000)
 		
-		# Set camera configuration
+		# Set camera configuration and enable embedded image timestamps
 		self.setConfig(numOfImages)
 		self.enableTimestamps()
 		
@@ -181,16 +189,15 @@ class PointGreyController(object):
 		self.setGain(gain)
 		self.setRegister(fc2Register['Shutter'], 0x42000000)
 		self.setExposureTime(expTime_ms)
-	
-		# Data Storage
-		self.timestamps = [float()]*numOfImages
-		self.rawImageData = [self.initializeImage() for _ in range(numOfImages)]
-		self.conImageData = [self.initializeImage() for _ in range(numOfImages)]
+		
+		# Initialise data storage structures
+		self.setImageBuffer(numOfImages)
 		
 	def start(self):
-		'''Start collecting images.'''
+		'''Readies camera to capture images when triggered.'''
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
+		self.clearBuffer()
 		
 	def stop(self):
 		'''Stop collecting images and disassociate context from camera.'''
@@ -198,7 +205,19 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2StopCapture(context))
 		handleError(FCDriver.fc2DestroyContext(context))
 	
+	def setImageBuffer(self, numOfImages):
+		'''
+		Sets up the image buffers to which the camera will save data, along
+		with the associated timestamp data.
+		'''
+		self.timestamps = [float()]*numOfImages
+		self.rawImageData = [self.initializeImage() for _ in range(numOfImages)]
+		self.conImageData = [self.initializeImage() for _ in range(numOfImages)]
+		
+# ----- Save Functions
+	
 	def saveRAWImages(self, fNameFormat = 'rawImage_%03d.raw'):
+		'''Saves the images collected using the raw format.'''
 		images = self.conImageData
 		for i in range(len(images)):
 			im = images[i]
@@ -207,6 +226,7 @@ class PointGreyController(object):
 			handleError(FCDriver.fc2SaveImage(byref(im), fname, fc2ImageFileFormat['RAW']))	
 		
 	def savePNGImages(self, fNameFormat = 'image_%03d.png'):
+		'''Save the images collected using the png format.'''
 		images = self.conImageData
 		for i in range(len(images)):
 			im = images[i]
@@ -228,16 +248,68 @@ class PointGreyController(object):
 		for i in range(len(timestamps)): 
 			outfile.write('Image %d: {%.14f}\n' % (i, timestamps[i]))
 		outfile.close()	
+
+# ----- Settings Functions
+	
+	def getExposureTime(self):
+		'''Get camera exposure time in ms.'''
+		t = self.getRegister(0x918)
+		t = 1000. * floatifier(t)
+		return t
+	
+	def setExposureTime(self, ms):
+		'''Set camera exposure time. Input is in ms.'''
+		min = 1000 * floatifier(self.getRegister(0x910))
+		max = 1000 * floatifier(self.getRegister(0x914))
+		if min < ms < max:
+			s = float(ms / 1000.)
+			s = hexifier(s)
+			self.setRegister(0x918, s)
+		else:
+			raise propertyError('Exposure time', ms, min, max, 'ms')
 		
-	def clearBuffer(self):
+	def getGain(self):
+		'''Get camera gain level in db.'''
+		g = self.getRegister(0x928)
+		g = floatifier(g)
+		return g
+		
+	def setGain(self, db):
+		'''Set camera gain leve in db.'''
+		min = floatifier(self.getRegister(0x920))
+		max = floatifier(self.getRegister(0x924))
+		if min < db < max:
+			db = float(db)
+			db = hexifier(db)
+			self.setRegister(0x928, db)
+		else:
+			raise propertyError('Gain', db, min, max, 'db')
+
+# ----- Image Handling Functions
+	
+	def initializeImage(self):
+		'''Initializes an fc2Image object for use with camera.'''
+		img = fc2Image()
+		handleError(FCDriver.fc2CreateImage(byref(img)))
+		return img
+	
+	def retrieveImages(self):
+		'''Retrieves all of the images collected by the camera.'''
 		context = self.context
-		im = self.initializeImage()
-		while True:
-			e	= FCDriver.fc2RetrieveBuffer(context, byref(im))
-			if e == 18:	# Timeout
-				return
-			elif e != 0:	# Other error
-				handleError(e)
+		rawDat = self.rawImageData
+		for i in range(len(rawDat)):
+			im = rawDat[i]
+			handleError(FCDriver.fc2RetrieveBuffer(context, byref(im)))
+		
+	def convertImages(self):
+		'''
+		Converts all the images collected by the camera based on the BGR
+		pixel format.
+		'''
+		rawDat = self.rawImageData
+		conDat = self.conImageData
+		for i in range(len(rawDat)):
+			handleError(FCDriver.fc2ConvertImageTo(fc2PixelFormat['BGR'], byref(rawDat[i]), byref(conDat[i])))
 
 	def setImageSettings(self, roi):
 		'''Used to set custom image sizes.'''
@@ -251,7 +323,9 @@ class PointGreyController(object):
 		imSet.pixelFormat = fc2PixelFormat['MONO8'] 
 		percentSpeed = c_float(50)
 		handleError(FCDriver.fc2SetFormat7Configuration(context, byref(imSet), percentSpeed))
-	
+					
+# ----- Triggering Functions
+
 	def enableSoftwareTrigger(self):
 		'''Enable software triggering of camera.'''
 		context = self.context
@@ -263,6 +337,10 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
 	
 	def fireSoftwareTrigger(self):
+		'''
+		Triggers the camera when software triggering is enabled. Will wait
+		until trigger is available before triggering.
+		'''
 		context = self.context
 		while self.getRegister(0x62C):
 			pass
@@ -279,21 +357,12 @@ class PointGreyController(object):
 		handleError(FCDriver.fc2SetTriggerMode(context, byref(triggerMode)))
 		while (self.getRegister(0x62C) & 0x001):
 			pass		
-			
-	def enableTimestamps(self):
-		'''Turns embedded image timestamps on'''
-		self.setRegister(0x12F8, 0x00000001)
+
+# ----- Timestamp Functions
 	
-	def extractTimestamps(self):
-		timestamps = self.timestamps
-		for i in range(len(timestamps)):
-			im = self.rawImageData[i]
-			ts = self.parseTimestamp(im)
-			timestamps[i] = ts
-		t0 = timestamps[0]
-		for i in range(len(timestamps)):
-			timestamps[i] = (timestamps[i] - t0) * 1000
-		
+	def enableTimestamps(self):
+		'''Turns embedded image timestamps on.'''
+		self.setRegister(0x12F8, 0x00000001)
 	
 	def parseTimestamp(self, im):
 		'''Parses the timestamp encoded in an image.'''
@@ -321,13 +390,43 @@ class PointGreyController(object):
 		timestamp = Timestamp(secondCount, cycleCount, cycleOffset)
 		return timestamp.decodeTime()
 			
-	def getConfig(self):
+	def extractTimestamps(self):
+		'''
+		Extracts all of the timestamps from the images collected and stores
+		them in the timestamps array.
+		'''
+		timestamps = self.timestamps
+		for i in range(len(timestamps)):
+			im = self.rawImageData[i]
+			ts = self.parseTimestamp(im)
+			timestamps[i] = ts
+		t0 = timestamps[0]
+		for i in range(len(timestamps)):
+			timestamps[i] = (timestamps[i] - t0) * 1000
+	
+# ----- Register Manipulation Functions	
+
+	def getRegister(self, addr):
+		'''
+		Gets the value of the camera register at the given address.'''
 		context = self.context
-		config = fc2Config()
-		handleError(FCDriver.fc2GetConfiguration(context, byref(config)))
-		return config
+		val = c_ulong()
+		handleError(FCDriver.fc2ReadRegister(context, addr, byref(val)))
+		return val.value
+	
+	def setRegister(self, addr, val):
+		'''
+		Sets the value of the camera register at the given address to the
+		given value.
+		'''
+		context = self.context
+		val = c_uint(val)
+		handleError(FCDriver.fc2WriteRegister(context, addr, val))
+		
+# ----- Leftover Functions
 
 	def setConfig(self, numOfImages):
+		'''Sets the camera configuration.'''
 		context = self.context
 		config = fc2Config()
 		config.numBuffers = numOfImages + 1
@@ -338,62 +437,17 @@ class PointGreyController(object):
 		config.asyncBusSpeed = fc2BusSpeed['ANY']
 		config.bandwidthAllocation = fc2BandwidthAllocation['ON']
 		handleError(FCDriver.fc2SetConfiguration(context, byref(config)))
-		
-	def getExposureTime(self):
-		t = self.getRegister(0x918)
-		t = 1000. * floatifier(t)
-		return t
-	
-	def setExposureTime(self, ms):
-		min = 1000 * floatifier(self.getRegister(0x910))
-		max = 1000 * floatifier(self.getRegister(0x914))
-		if min < ms < max:
-			s = float(ms / 1000.)
-			s = hexifier(s)
-			self.setRegister(0x918, s)
-		else:
-			raise propertyError('Exposure time', ms, min, max, 'ms')
-		
-	def getGain(self):
-		g = self.getRegister(0x928)
-		g = floatifier(g)
-		return g
-		
-	def setGain(self, db):
-		min = floatifier(self.getRegister(0x920))
-		max = floatifier(self.getRegister(0x924))
-		if min < db < max:
-			db = float(db)
-			db = hexifier(db)
-			self.setRegister(0x928, db)
-		else:
-			raise propertyError('Gain', db, min, max, 'db')
-	
-	def initializeImage(self):
-		img = fc2Image()
-		handleError(FCDriver.fc2CreateImage(byref(img)))
-		return img
-	
-	def retrieveImages(self):
-		context = self.context
-		rawDat = self.rawImageData
-		for i in range(len(rawDat)):
-			im = rawDat[i]
-			handleError(FCDriver.fc2RetrieveBuffer(context, byref(im)))
-		
-	def convertImages(self):
-		rawDat = self.rawImageData
-		conDat = self.conImageData
-		for i in range(len(rawDat)):
-			handleError(FCDriver.fc2ConvertImageTo(fc2PixelFormat['BGR'], byref(rawDat[i]), byref(conDat[i])))
 
-	def getRegister(self, addr):
+	def clearBuffer(self):
+		'''
+		Clears out image buffer. Used to ensure that images from previous
+		runs are removed from camera.
+		''' 
 		context = self.context
-		val = c_ulong()
-		handleError(FCDriver.fc2ReadRegister(context, addr, byref(val)))
-		return val.value
-	
-	def setRegister(self, addr, val):
-		context = self.context
-		val = c_uint(val)
-		handleError(FCDriver.fc2WriteRegister(context, addr, val))
+		im = self.initializeImage()
+		while True:
+			e	= FCDriver.fc2RetrieveBuffer(context, byref(im))
+			if e == 18:	# Timeout
+				return
+			elif e != 0:	# Other error
+				handleError(e)
