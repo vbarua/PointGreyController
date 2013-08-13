@@ -1,3 +1,15 @@
+'''
+Victor Barua for UBC QDG Lab
+Summer 2013
+
+Controller for Point Grey Flea2 Camera (Model FL2G-13S2M-C). Instances of the
+PointGreyController class are linked to physical cameras. Methods to set camera
+parameters and execute its functions are available through its instance.
+
+Notes
+- The Region of Interest must be set when the controller is created.
+'''
+
 from PointGreyTypes import *
 from threading import Thread
 from ctypes import *
@@ -83,7 +95,7 @@ class ROI(object):
 	def setROI(self, posLeft, posTop, width, height):
 		"""Sets the ROI parameters explicitly."""
 		self.posLeft = posLeft - posLeft % 2	#Pixels from left to start ROI.
-		self.posTop = posTop - posTop % 2 		#Pixels from top to start ROI.
+		self.posTop = posTop - posTop % 2  #Pixels from top to start ROI.
 		self.width = int(ceil(width / 8.) * 8) 	#Width (in pixels) of the ROI.
 		self.height = height + height % 2		#Height (in pixels) of the ROI.
 		self.checkValues()
@@ -129,6 +141,8 @@ def handleError(errorCode):
 	Wrapper for FlyCapture2 API function calls which handles the error
 	codes it returns.
 	'''
+	if errorCode == 19:
+		print "!!!!! Image buffer retrieval timed out. The most likely cause is that there was not enough time between triggers."
 	if errorCode:
 		raise flyCaptureError(errorCode)
 		
@@ -151,10 +165,8 @@ class flyCaptureError(Exception):
 	
 class PointGreyController(object):
 	
-	def __init__(self, numOfImages = 4, expTime_ms = 15, gain = 0, roi = False):
+	def __init__(self, numOfImages = 5, expTime_ms = 15, gain = 0, roi = False):
 		self.numOfImages = numOfImages
-		self.expTime_ms = expTime_ms
-		self.gain = 0
 		self.roi = roi
 		
 		context = fc2Context()
@@ -189,12 +201,12 @@ class PointGreyController(object):
 		self.setGain(gain)
 		self.setRegister(fc2Register['Shutter'], 0x42000000)
 		self.setExposureTime(expTime_ms)
-		
-		# Initialise data storage structures
-		self.setImageBuffer(numOfImages)
+		self.expTime_ms = self.getExposureTime()
+		self.gain = self.getGain()
 		
 	def start(self):
 		'''Readies camera to capture images when triggered.'''
+		self.setDataBuffers(self.numOfImages)	# Initialise data storage structures
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
 		self.clearBuffer()
@@ -202,14 +214,12 @@ class PointGreyController(object):
 	def stop(self):
 		'''Stop collecting images and disassociate context from camera.'''
 		context = self.context
+		self.processData()
 		handleError(FCDriver.fc2StopCapture(context))
 		handleError(FCDriver.fc2DestroyContext(context))
 	
-	def setImageBuffer(self, numOfImages):
-		'''
-		Sets up the image buffers to which the camera will save data, along
-		with the associated timestamp data.
-		'''
+	def setDataBuffers(self, numOfImages):
+		'''Sets up the data buffers to which the camera will save data. '''
 		self.timestamps = [float()]*numOfImages
 		self.rawImageData = [self.initializeImage() for _ in range(numOfImages)]
 		self.conImageData = [self.initializeImage() for _ in range(numOfImages)]
@@ -217,7 +227,7 @@ class PointGreyController(object):
 # ----- Save Functions
 	
 	def saveRAWImages(self, fNameFormat = 'rawImage_%03d.raw'):
-		'''Saves the images collected using the raw format.'''
+		'''Saves the images collected in raw format.'''
 		images = self.conImageData
 		for i in range(len(images)):
 			im = images[i]
@@ -226,7 +236,7 @@ class PointGreyController(object):
 			handleError(FCDriver.fc2SaveImage(byref(im), fname, fc2ImageFileFormat['RAW']))	
 		
 	def savePNGImages(self, fNameFormat = 'image_%03d.png'):
-		'''Save the images collected using the png format.'''
+		'''Save the images collected in png format.'''
 		images = self.conImageData
 		for i in range(len(images)):
 			im = images[i]
@@ -235,11 +245,11 @@ class PointGreyController(object):
 			handleError(FCDriver.fc2SaveImage(byref(im), fname, fc2ImageFileFormat['PNG']))	
 		
 	def saveLog(self, fpath = 'log.txt'):
-		"""Creates and saves log file for image collection run"""
+		"""Creates and saves a log file for the image collection run"""
 		timestamps = self.timestamps
 		outfile = open(fpath, 'w')
-		outfile.write('Collection Time: %s\n' % (time.strftime("%y%m%d_%H%M%S")))
-		outfile.write('Exposure Time: %d ms, Gain: %d dB\n' % (self.expTime_ms, self.gain))
+		outfile.write('Collection Date and Time: %s\n' % (time.strftime("%y%m%d_%H%M%S")))
+		outfile.write('Exposure Time: %.3f ms, Gain: %d dB\n' % (self.expTime_ms, self.gain))
 		if self.roi:
 			outfile.write(str(self.roi))
 		else:
@@ -425,6 +435,15 @@ class PointGreyController(object):
 		
 # ----- Leftover Functions
 
+	def processData(self):
+		'''
+		Process the data retrieved by the camera into a form that
+		is easily saveable.
+		'''
+		self.retrieveImages()
+		self.convertImages()
+		self.extractTimestamps()	
+
 	def setConfig(self, numOfImages):
 		'''Sets the camera configuration.'''
 		context = self.context
@@ -451,3 +470,18 @@ class PointGreyController(object):
 				return
 			elif e != 0:	# Other error
 				handleError(e)
+				
+if __name__ == '__main__':
+	# Usage Example
+	numOfImages = 4
+	PGC = PointGreyController(numOfImages, 0.5, 0)
+	PGC.enableSoftwareTrigger()
+	PGC.start()
+	count = 0
+	while count < numOfImages:
+		print "Fire Trigger: ", str(count + 1)
+		PGC.fireSoftwareTrigger()
+		count += 1 
+	PGC.stop()
+	PGC.savePNGImages()
+	PGC.saveLog()	
