@@ -100,19 +100,19 @@ class ROI(object):
 		self.height = height + height % 2		#Height (in pixels) of the ROI.
 		self.checkValues()
 	
-	def setROICenter(center, width, height):
+	def setROICenter(self, center, width, height):
 		"""
 		Sets the ROI parameters based on where the image center should be along
 		with the width and height. center is a tuple of the form (x, y).
 		"""
-		x = center(0)
-		y = center(1)
+		x = center[0]
+		y = center[1]
 		self.width = int(ceil(width / 8.) * 8) 	#Width (in pixels) of the ROI.
 		self.height = height + height % 2		#Height (in pixels) of the ROI.
 		hWidth = self.width/2
 		hHeight = self.height/2
 		l = x - hWidth
-		t = y - hHight
+		t = y - hHeight
 		self.posLeft = l - l % 2
 		self.posTop = t - t % 2
 		self.checkValues()	
@@ -182,7 +182,6 @@ class PointGreyController(object):
 		self.setRegister(fc2Register['Power'], 0x80000000)
 		
 		# Set camera configuration and enable embedded image timestamps
-		self.setConfig(numOfImages)
 		self.enableTimestamps()
 		
 		# Set camera region of interest.
@@ -206,6 +205,8 @@ class PointGreyController(object):
 		
 	def start(self):
 		'''Readies camera to capture images when triggered.'''
+		print "Number of Images: ", self.numOfImages
+		self.setConfig(self.numOfImages)
 		self.setDataBuffers(self.numOfImages)	# Initialise data storage structures
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
@@ -474,7 +475,9 @@ class PointGreyController(object):
 if __name__ == '__main__':
 	# Usage Example
 	numOfImages = 4
-	PGC = PointGreyController(numOfImages, 0.5, 0)
+	roi = ROI()
+	roi.setROI(100, 100, 600, 200)
+	PGC = PointGreyController(numOfImages, 0.5, 0, roi)
 	PGC.enableSoftwareTrigger()
 	PGC.start()
 	count = 0
@@ -484,4 +487,5 @@ if __name__ == '__main__':
 		count += 1 
 	PGC.stop()
 	PGC.savePNGImages()
-	PGC.saveLog()	
+	PGC.saveLog()
+	del PGC
