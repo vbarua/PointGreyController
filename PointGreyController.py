@@ -21,7 +21,6 @@ FCDriver = CDLL('FlyCapture2_C')
 # FlyCapture2 C Documentation:
 # http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 
-
 # ----- Conversion Functions ----- #
 
 def hexifier(fl):
@@ -205,7 +204,6 @@ class PointGreyController(object):
 		
 	def start(self):
 		'''Readies camera to capture images when triggered.'''
-		print "Number of Images: ", self.numOfImages
 		self.setConfig(self.numOfImages)
 		self.setDataBuffers(self.numOfImages)	# Initialise data storage structures
 		context = self.context
@@ -397,10 +395,13 @@ class PointGreyController(object):
 		acc = ''
 		for b in byteArray:
 			acc += binarify(b, 8)
-
-		secondCount = int(acc[0:7], 2)
-		cycleCount = int(acc[7:20], 2)
-		cycleOffset = int(acc[20:], 2)
+		try:
+			secondCount = int(acc[0:7], 2)
+			cycleCount = int(acc[7:20], 2)
+			cycleOffset = int(acc[20:], 2)
+		except ValueError:
+			print "Timestamp failure occurred in PointGreyController."
+			return -1
 		timestamp = Timestamp(secondCount, cycleCount, cycleOffset)
 		return timestamp.decodeTime()
 			
@@ -477,9 +478,9 @@ class PointGreyController(object):
 				
 if __name__ == '__main__':
 	# Usage Example
-	numOfImages = 4
+	numOfImages = 2
 	roi = ROI()
-	#roi.setROI(100, 100, 600, 200)
+	roi.setROI(100, 100, 600, 200)
 	PGC = PointGreyController(numOfImages, 0.5, 0)
 	PGC.enableSoftwareTrigger()
 	PGC.start()
@@ -489,6 +490,7 @@ if __name__ == '__main__':
 		PGC.fireSoftwareTrigger()
 		count += 1 
 	PGC.stop()
+	PGC.saveRAWImages()
 	PGC.savePNGImages()
 	PGC.saveLog()
 	del PGC

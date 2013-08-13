@@ -78,6 +78,45 @@ fc2PixelFormat = {
 	'UNSPECIFIED_PIXEL_FORMAT'	: 0 	# Unspecified pixel format. 
 }
 
+fc2FrameRate = {
+    'FRAMERATE_1_875' : 0,       
+    'FRAMERATE_3_75' : 1,    
+    'FRAMERATE_7_5' : 2,     
+    'FRAMERATE_15' : 3,    
+    'FRAMERATE_30' : 4,      
+    'FRAMERATE_60' : 5,      
+    'FRAMERATE_120' : 6, 
+    'FRAMERATE_240' : 7, 
+    'FRAMERATE_FORMAT7' : 8
+}
+
+fc2VideoMode = {
+	'VIDEOMODE_160x120YUV444' : 0,
+    'VIDEOMODE_320x240YUV422' : 1,
+    'VIDEOMODE_640x480YUV411' : 2,
+    'VIDEOMODE_640x480YUV422' : 3,
+    'VIDEOMODE_640x480RGB' : 4,
+    'VIDEOMODE_640x480Y8' : 5,
+    'VIDEOMODE_640x480Y16' : 6,
+    'VIDEOMODE_800x600YUV422' : 7,
+    'VIDEOMODE_800x600RGB' : 8,
+    'VIDEOMODE_800x600Y8' : 9,
+    'VIDEOMODE_800x600Y16' : 10,
+    'VIDEOMODE_1024x768YUV422' : 11,
+    'VIDEOMODE_1024x768RGB' : 12,
+    'VIDEOMODE_1024x768Y8' : 13,
+    'VIDEOMODE_1024x768Y16' : 14,
+    'VIDEOMODE_1280x960YUV422' : 15,
+    'VIDEOMODE_1280x960RGB' : 16,
+    'VIDEOMODE_1280x960Y8' : 17,
+    'VIDEOMODE_1280x960Y16' : 18,
+    'VIDEOMODE_1600x1200YUV422' : 19,
+    'VIDEOMODE_1600x1200RGB' : 20,
+    'VIDEOMODE_1600x1200Y8' : 21,
+    'VIDEOMODE_1600x1200Y16' : 22,
+    'VIDEOMODE_FORMAT7' : 23
+}
+	
 fc2BayerTileFormat = {
     'NONE' : 0, # No bayer tile format. 
     'RGGB' : 1, # Red-Green-Green-Blue. 
