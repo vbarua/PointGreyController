@@ -14,13 +14,10 @@ class PointGreyBuilder(object):
 		roi = ROI()
 		if (self.useROI or self.useROICenter):
 			if (self.useROICenter):
-				roi.setROICenter(self.ROI_center, self.ROI_width, self.ROI_height)
-				PGC = PointGreyController(expTime_ms = self.expTime_ms,gain = self.gain, roi = roi)	
+				roi.setROICenter(self.ROI_center, self.ROI_width, self.ROI_height)	
 			else:
 				roi.setROI(self.ROI_left, self.ROI_top, self.ROI_width, self.ROI_height)
-				PGC = PointGreyController(expTime_ms = self.expTime_ms,gain = self.gain, roi = roi)	
-		else:
-			PGC = PointGreyController(expTime_ms = self.expTime_ms,gain = self.gain, roi = False)								
+		PGC = PointGreyController(expTime_ms = self.expTime_ms, gain = self.gain, roi = roi, boostFramerate = self.boostFramerate)								
 		return PGC
 		
 if __name__ == "__main__":
@@ -30,10 +27,11 @@ if __name__ == "__main__":
 							useROI = False,			# Use Region of Interest
 							useROICenter = False,	# Use Region of Interest based on center point.
 							ROI_left = 100,
-							ROI_top = 100,
-							ROI_width = 600,
+							ROI_top = 150,
+							ROI_width = 300,
 							ROI_height = 200,
-							ROI_center = (430, 640)	# (x, y)
+							ROI_center = (430, 640),	# (x, y)
+							boostFramerate = True
 							)
 	PGCBuilder = PointGreyBuilder(pointgrey_values)
 	PGC = PGCBuilder.buildController()
@@ -51,4 +49,3 @@ if __name__ == "__main__":
 	PGC.savePNGImages()
 	del PGC
 	
-		

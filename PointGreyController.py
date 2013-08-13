@@ -56,10 +56,10 @@ def floatifier(h):
 class ROIError(Exception):
 	"""For errors in setting the Region of Interest"""
 	def __init__(self, value, issueStr):
-		self.issueStr = issueStr
+		self.msg = issueStr + str(value)
 		
 	def __str__(self):
-		return repr(self.issueStr + str(value))
+		return repr(self.msg)
 
 class ROI(object):
 	"""Defines the region of interest of the camera."""
@@ -67,8 +67,8 @@ class ROI(object):
 	def __init__(self):
 		self.posLeft = 0
 		self.posTop = 0
-		self.width = 960
-		self.height = 1280
+		self.width = 1288
+		self.height = 964
 	
 	def __str__(self):
 		return 'Left: %d, Top: %d, Width: %d, Height: %d' % (self.posLeft, self.posTop, self.width, self.height)
@@ -79,18 +79,18 @@ class ROI(object):
 		posLeft = self.posLeft	#Pixels from top to start ROI.
 		width = self.width		#Width (in pixels) of the ROI.
 		height = self.height	#Height (in pixels) of the ROI.
-		if not(0 <= posTop < 960):
-			raise ROIError(posTop, 'Top must be between 0 and 960. Currently ') 
-		if not(0 <= posLeft < 1280):
-			raise ROIError(posLeft, 'Left must be between 0 and 1280. Currently ')
-		if not(0 <= width <= 960):
-			raise ROIError(width, 'Width must be between 0 and 960. Currently ') 
-		if not(0 <= height <= 1280):
-			raise ROIError(posTop, 'Height must be between 0 and 960. Currently ') 
-		if not(0 < posTop + height <= 960):
-			raise ROIError(posTop + height, 'Top + height must be <= 960. Currently ')
-		if not(0< posLeft + width <= 1280):
-			raise 0 < ROIError(posLeft + width, 'Left + width must be <=1280. Currently ')
+		if not(0 <= posTop < 964):
+			raise ROIError(posTop, 'Top must be between 0 and 964. Currently ') 
+		if not(0 <= posLeft < 1288):
+			raise ROIError(posLeft, 'Left must be between 0 and 1288. Currently ')
+		if not(0 <= width <= 1288):
+			raise ROIError(width, 'Width must be between 0 and 1288. Currently ') 
+		if not(0 <= height <= 964):
+			raise ROIError(posTop, 'Height must be between 0 and 964. Currently ') 
+		if not(0 < posTop + height <= 964):
+			raise ROIError(posTop + height, 'Top + height must be <= 964. Currently ')
+		if not(0< posLeft + width <= 1288):
+			raise 0 < ROIError(posLeft + width, 'Left + width must be <=1288. Currently ')
 	
 	def setROI(self, posLeft, posTop, width, height):
 		"""Sets the ROI parameters explicitly."""
@@ -165,9 +165,10 @@ class flyCaptureError(Exception):
 	
 class PointGreyController(object):
 	
-	def __init__(self, numOfImages = 5, expTime_ms = 15, gain = 0, roi = False):
+	def __init__(self, numOfImages = 5, expTime_ms = 15, gain = 0, roi = ROI(), boostFramerate = False):
 		self.numOfImages = numOfImages
 		self.roi = roi
+		self.boostFramerate = boostFramerate
 		
 		context = fc2Context()
 		handleError(FCDriver.fc2CreateContext(byref(context)))		
@@ -185,8 +186,7 @@ class PointGreyController(object):
 		self.enableTimestamps()
 		
 		# Set camera region of interest.
-		if roi:
-			self.setImageSettings(roi)
+		self.setImageSettings(roi)
 		
 		# Disables unused camera settings.
 		self.setRegister(fc2Register['AutoExposure'], 0x40000000)
@@ -331,7 +331,10 @@ class PointGreyController(object):
 		imSet.offsetY = roi.posTop
 		imSet.width = roi.width
 		imSet.height = roi.height
-		imSet.pixelFormat = fc2PixelFormat['MONO8'] 
+		if self.boostFramerate:
+			imSet.pixelFormat = fc2PixelFormat['MONO8']
+		else:
+			imSet.pixelFormat = fc2PixelFormat['MONO16'] 
 		percentSpeed = c_float(50)
 		handleError(FCDriver.fc2SetFormat7Configuration(context, byref(imSet), percentSpeed))
 					
@@ -476,8 +479,8 @@ if __name__ == '__main__':
 	# Usage Example
 	numOfImages = 4
 	roi = ROI()
-	roi.setROI(100, 100, 600, 200)
-	PGC = PointGreyController(numOfImages, 0.5, 0, roi)
+	#roi.setROI(100, 100, 600, 200)
+	PGC = PointGreyController(numOfImages, 0.5, 0)
 	PGC.enableSoftwareTrigger()
 	PGC.start()
 	count = 0
