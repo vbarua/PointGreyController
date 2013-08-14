@@ -38,6 +38,7 @@ if __name__ == "__main__":
 	numOfImages = 4
 	PGC.numOfImages = numOfImages
 	PGC.enableSoftwareTrigger()
+	PGC.setDataBuffers(numOfImages)
 	PGC.start()
 	count = 0
 	while count < numOfImages:

@@ -1,11 +1,10 @@
 from ctypes import *
-
+c_bool = c_int	# c_bool was not yet implemented in Python 2.5
 fc2Context = c_void_p
 fc2ImageImpl = c_void_p
 fc2PGRGuid = c_uint*4
 
 MAX_STRING_LENGTH = 512
-
 
 fc2ErrorCodeStrings = [
     'Function returned with no errors.',

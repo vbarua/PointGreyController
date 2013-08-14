@@ -16,8 +16,10 @@ from ctypes import *
 from struct import pack, unpack
 from math import ceil
 import time
+from numpy import binary_repr
 
 FCDriver = CDLL('FlyCapture2_C')
+
 # FlyCapture2 C Documentation:
 # http://www.ptgrey.com/support/downloads/documents/flycapture/Doxygen/html/index.html
 
@@ -205,7 +207,6 @@ class PointGreyController(object):
 	def start(self):
 		'''Readies camera to capture images when triggered.'''
 		self.setConfig(self.numOfImages)
-		self.setDataBuffers(self.numOfImages)	# Initialise data storage structures
 		context = self.context
 		handleError(FCDriver.fc2StartCapture(context))
 		self.clearBuffer()
@@ -383,8 +384,7 @@ class PointGreyController(object):
 			Outputs a string representing the binary representation of n with d digits,
 			adding padding zeros on the left.
 			'''
-			s = bin(n)
-			s = s[2:]
+			s = binary_repr(n)
 			while len(s) < d:
 				s = '0' + s
 			return s
@@ -483,6 +483,7 @@ if __name__ == '__main__':
 	roi.setROI(100, 100, 600, 200)
 	PGC = PointGreyController(numOfImages, 0.5, 0)
 	PGC.enableSoftwareTrigger()
+	PGC.setDataBuffers(numOfImages)
 	PGC.start()
 	count = 0
 	while count < numOfImages:
